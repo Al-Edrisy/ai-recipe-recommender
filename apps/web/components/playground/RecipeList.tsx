@@ -18,7 +18,13 @@ export const RecipeList = ({ recipes, onSelect, loading }: RecipeListProps) => {
   const filteredRecipes = useMemo(() => {
     if (!search) return recipes;
     return recipes.filter(recipe => 
-      recipe.title.toLowerCase().includes(search.toLowerCase())
+      recipe.title.toLowerCase().includes(search.toLowerCase()) ||
+      (recipe.cuisine && recipe.cuisine.toLowerCase().includes(search.toLowerCase())) ||
+      (recipe.ingredients && recipe.ingredients.some((ing: any) => 
+        typeof ing === 'string' 
+          ? ing.toLowerCase().includes(search.toLowerCase())
+          : ing.name && typeof ing.name === 'string' && ing.name.toLowerCase().includes(search.toLowerCase())
+      ))
     );
   }, [recipes, search]);
 
@@ -38,7 +44,7 @@ export const RecipeList = ({ recipes, onSelect, loading }: RecipeListProps) => {
   return (
     <div className="h-full flex flex-col">
       <Input 
-        placeholder="Search recipes..." 
+        placeholder="Search recipes by title, cuisine, or ingredient..." 
         className="mb-3"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -56,23 +62,28 @@ export const RecipeList = ({ recipes, onSelect, loading }: RecipeListProps) => {
           </p>
         </div>
       ) : (
-        <ScrollArea className="flex-grow">
-          <div className="space-y-2">
+        <ScrollArea className="flex-grow max-h-[calc(100vh-200px)]">
+          <div className="space-y-2 pr-2">
             {filteredRecipes.map(recipe => (
               <Button
                 key={recipe.id}
                 variant="outline"
-                className="w-full text-left justify-start h-auto py-3 px-4"
+                className="w-full text-left justify-start h-auto py-3 px-4 hover:bg-accent"
                 onClick={() => onSelect(recipe)}
               >
                 <div className="flex flex-col items-start">
                   <div className="font-medium">{recipe.title}</div>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    <Badge variant="secondary" className="text-xs">
-                      {recipe.cuisine}
-                    </Badge>
+                    {recipe.cuisine && (
+                      <Badge variant="secondary" className="text-xs">
+                        {recipe.cuisine}
+                      </Badge>
+                    )}
                     <Badge variant="outline" className="text-xs">
                       {recipe.prepTime} min
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {recipe.servings} servings
                     </Badge>
                   </div>
                 </div>

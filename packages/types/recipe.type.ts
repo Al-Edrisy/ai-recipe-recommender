@@ -10,7 +10,7 @@ export interface Recipe {
   dietType: string;
   lifestyle: string;
   ingredients: string[];
-  prepTime: number;
+  cookTime: number;
   instructions: string[];
   modelUsed: string;
   source: 'llm' | 'user' | 'playground';

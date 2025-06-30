@@ -1,14 +1,14 @@
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Loader2, Sparkles } from "lucide-react";
 
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+
+// Constants
 const DIET_TYPES = [
   { value: "none", label: "No restrictions" },
   { value: "balanced", label: "Balanced" },
@@ -25,14 +25,72 @@ const SPICE_LEVELS = [
   { value: "hot", label: "Hot" },
 ];
 
+// Props
 interface RecipeFormProps {
-  form: any;
+  form: {
+    ingredients: string[];
+    servings: number;
+    cookTime: number;
+    cuisine: string;
+    diet: string;
+    preferences: {
+      spiceLevel: string;
+      lowFat: boolean;
+    };
+  };
   onChange: (field: string, value: any) => void;
   onGenerate: () => void;
   loading: boolean;
 }
 
 export const RecipeForm = ({ form, onChange, onGenerate, loading }: RecipeFormProps) => {
+  const [buffer, setBuffer] = useState("");
+  const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setBuffer("");
+  }, [form.ingredients]);
+
+  const addIngredient = (raw: string) => {
+    const cleaned = raw.trim().replace(/^"|"$/g, "");
+    if (cleaned && !form.ingredients.includes(cleaned)) {
+      onChange("ingredients", [...form.ingredients, cleaned]);
+      setErrors((e) => ({ ...e, ingredients: false }));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "," || e.key === "Enter") {
+      e.preventDefault();
+      if (buffer.trim()) {
+        addIngredient(buffer);
+        setBuffer("");
+      }
+    }
+  };
+
+  const removeIngredient = (index: number) => {
+    const updated = form.ingredients.filter((_, i) => i !== index);
+    onChange("ingredients", updated);
+  };
+
+  const validate = () => {
+    const errs: Record<string, boolean> = {};
+    if (form.ingredients.length === 0) errs.ingredients = true;
+    if (!form.servings || form.servings < 1) errs.servings = true;
+    return errs;
+  };
+
+  const handleGenerate = () => {
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+    } else {
+      onGenerate();
+    }
+  };
+
   const containerVariants = {
     hidden: { opacity: 0 },
     show: {
@@ -49,46 +107,66 @@ export const RecipeForm = ({ form, onChange, onGenerate, loading }: RecipeFormPr
   };
 
   return (
-    <motion.div
-      className="space-y-4"
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-    >
+    <motion.div className="space-y-4" variants={containerVariants} initial="hidden" animate="show">
+      {/* Ingredients Field */}
       <motion.div variants={itemVariants}>
-        <Label htmlFor="ingredients">Ingredients</Label>
+        <Label htmlFor="ingredients" className="required">Ingredients</Label>
+
+        {/* Chips */}
+        <div className="flex flex-wrap gap-2 mb-2">
+          {form.ingredients.map((item, idx) => (
+            <span
+              key={idx}
+              className="inline-flex items-center bg-muted text-sm px-3 py-1 rounded-full"
+            >
+              {item}
+              <button
+                type="button"
+                className="ml-2 text-muted-foreground hover:text-destructive"
+                onClick={() => removeIngredient(idx)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* Input */}
         <Input
           id="ingredients"
-          value={form.ingredients.join(', ')}
-          onChange={(e) => 
-            onChange("ingredients", 
-              e.target.value.split(',')
-                .map(i => i.trim())
-                .filter(i => i)
-            )
-          }
-          placeholder="Enter ingredients, separated by commas"
+          ref={inputRef}
+          value={buffer}
+          onChange={(e) => setBuffer(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder='Type and press "," or Enter to add'
+          className={errors.ingredients ? "border-destructive" : ""}
         />
-        <p className="text-xs text-muted-foreground mt-1">
-          Separate ingredients with commas
-        </p>
+        {errors.ingredients && (
+          <p className="text-xs text-destructive mt-1">
+            Please enter at least one ingredient.
+          </p>
+        )}
       </motion.div>
 
-      <motion.div
-        variants={itemVariants}
-        className="grid grid-cols-2 gap-4"
-      >
+      {/* Servings and Cook Time */}
+      <motion.div variants={itemVariants} className="grid grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="servings">Servings</Label>
+          <Label htmlFor="servings" className="required">Servings</Label>
           <Input
             id="servings"
             type="number"
             value={form.servings}
-            onChange={(e) =>
-              onChange("servings", parseInt(e.target.value) || 1)
-            }
+            onChange={(e) => {
+              const value = Math.max(1, parseInt(e.target.value) || 1);
+              onChange("servings", value);
+              setErrors((prev) => ({ ...prev, servings: false }));
+            }}
             min="1"
+            className={errors.servings ? "border-destructive" : ""}
           />
+          {errors.servings && (
+            <p className="text-xs text-destructive mt-1">Servings must be at least 1</p>
+          )}
         </div>
         <div>
           <Label htmlFor="cookTime">Cook Time (min)</Label>
@@ -97,13 +175,14 @@ export const RecipeForm = ({ form, onChange, onGenerate, loading }: RecipeFormPr
             type="number"
             value={form.cookTime}
             onChange={(e) =>
-              onChange("cookTime", parseInt(e.target.value) || 0)
+              onChange("cookTime", Math.max(0, parseInt(e.target.value) || 0))
             }
             min="0"
           />
         </div>
       </motion.div>
 
+      {/* Cuisine */}
       <motion.div variants={itemVariants}>
         <Label htmlFor="cuisine">Cuisine</Label>
         <Input
@@ -114,6 +193,7 @@ export const RecipeForm = ({ form, onChange, onGenerate, loading }: RecipeFormPr
         />
       </motion.div>
 
+      {/* Diet Type */}
       <motion.div variants={itemVariants}>
         <Label htmlFor="diet">Diet Type</Label>
         <Select
@@ -133,15 +213,14 @@ export const RecipeForm = ({ form, onChange, onGenerate, loading }: RecipeFormPr
         </Select>
       </motion.div>
 
+      {/* Preferences */}
       <motion.div variants={itemVariants}>
         <Label>Preferences</Label>
         <div className="grid grid-cols-2 gap-4 mt-2">
           <div>
             <Label htmlFor="spiceLevel">Spice Level</Label>
             <Select
-              onValueChange={(value) =>
-                onChange("preferences.spiceLevel", value)
-              }
+              onValueChange={(value) => onChange("preferences.spiceLevel", value)}
               value={form.preferences.spiceLevel}
             >
               <SelectTrigger>
@@ -171,11 +250,12 @@ export const RecipeForm = ({ form, onChange, onGenerate, loading }: RecipeFormPr
         </div>
       </motion.div>
 
+      {/* Generate Button */}
       <motion.div variants={itemVariants}>
         <Button
-          onClick={onGenerate}
+          onClick={handleGenerate}
           className="w-full"
-          disabled={loading || !form.ingredients.length}
+          disabled={loading}
         >
           {loading ? (
             <>

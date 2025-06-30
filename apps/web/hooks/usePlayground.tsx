@@ -6,91 +6,65 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 export const usePlayground = () => {
   const { firebaseUser } = useAuth();
+
   const [recipeForm, setRecipeForm] = useState<GenerateRecipeInput>({
     ingredients: [],
     diet: 'none',
     cuisine: '',
     cookTime: 30,
     servings: 4,
-    preferences: { spiceLevel: 'medium', lowFat: false }
+    preferences: {
+      spiceLevel: 'medium',
+      lowFat: false,
+    },
   });
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [currentRecipe, setCurrentRecipe] = useState<Recipe | null>(null);
   const [savedRecipes, setSavedRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchWithAuth = useCallback(async (endpoint: string, options: RequestInit = {}) => {
-    try {
-      if (!firebaseUser) {
-        throw new Error('User not authenticated');
-      }
+  const fetchWithAuth = useCallback(
+    async (endpoint: string, options: RequestInit = {}) => {
+      if (!firebaseUser) throw new Error('User not authenticated');
 
-      // Get fresh token for each request
       const token = await firebaseUser.getIdToken();
       const headers = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
-        ...options.headers
+        ...options.headers,
       };
 
       const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
-        headers
+        headers,
       });
 
-      // Handle HTML responses (like 404 pages)
       const contentType = response.headers.get('content-type');
       if (!contentType?.includes('application/json')) {
-        const text = await response.text();
-        if (text.startsWith('<!DOCTYPE html>')) {
-          throw new Error('Server returned HTML instead of JSON');
-        }
-        throw new Error(`Unexpected response: ${text.slice(0, 100)}`);
+        throw new Error('Unexpected non-JSON response');
       }
 
-      // Handle 401 Unauthorized
-      if (response.status === 401) {
-        const newToken = await firebaseUser.getIdToken(true);
-        const retryResponse = await fetch(`${API_URL}${endpoint}`, {
-          ...options,
-          headers: { ...headers, Authorization: `Bearer ${newToken}` }
-        });
-
-        if (!retryResponse.ok) {
-          const errorData = await retryResponse.json().catch(() => ({}));
-          throw new Error(errorData.message || `API error: ${retryResponse.status}`);
-        }
-        return retryResponse.json();
-      }
-
-      // Handle other error statuses
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `API error: ${response.status}`);
       }
 
       return response.json();
-    } catch (error) {
-      console.error('API request failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      setError(errorMessage);
-      throw error;
-    }
-  }, [firebaseUser]);
+    },
+    [firebaseUser]
+  );
 
   const fetchSavedRecipes = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const recipes = await fetchWithAuth('/recipes?limit=100&offset=0');
-      if (!Array.isArray(recipes)) {
-        throw new Error('Invalid recipes data received');
-      }
-      setSavedRecipes(recipes);
-    } catch (error) {
-      console.error('Failed to fetch recipes:', error);
-      setError('Failed to load recipes. Please try again.');
+      const data = await fetchWithAuth('/recipes?limit=100&offset=0');
+      if (!Array.isArray(data)) throw new Error('Invalid recipe data format');
+      setSavedRecipes(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load recipes');
     } finally {
       setLoading(false);
     }
@@ -102,30 +76,35 @@ export const usePlayground = () => {
     try {
       const newRecipe = await fetchWithAuth('/recipes/generate', {
         method: 'POST',
-        body: JSON.stringify(recipeForm)
+        body: JSON.stringify(recipeForm),
       });
 
-      if (!newRecipe?.id) {
-        throw new Error('Invalid recipe data received');
-      }
+      if (!newRecipe?.id) throw new Error('Invalid recipe data');
 
       setCurrentRecipe(newRecipe);
-      setChatMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `Generated recipe: ${newRecipe.title}`,
-        createdAt: new Date()
-      }]);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Generated recipe: ${newRecipe.title}`,
+          createdAt: new Date(),
+        },
+      ]);
+
       await fetchSavedRecipes();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate recipe';
-      setChatMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `Error: ${errorMessage}`,
-        createdAt: new Date()
-      }]);
-      setError(errorMessage);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setError(msg);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Error: ${msg}`,
+          createdAt: new Date(),
+        },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -133,33 +112,56 @@ export const usePlayground = () => {
 
   const handleSaveRecipe = useCallback(async () => {
     if (!currentRecipe?.id) return;
-    
+
     setLoading(true);
     setError(null);
     try {
-      const updatedRecipe = await fetchWithAuth(`/recipes/${currentRecipe.id}`, {
+      const updated = await fetchWithAuth(`/recipes/${currentRecipe.id}`, {
         method: 'PUT',
-        body: JSON.stringify(currentRecipe)
+        body: JSON.stringify(currentRecipe),
       });
 
-      if (!updatedRecipe?.id) {
-        throw new Error('Failed to save recipe');
-      }
+      if (!updated?.id) throw new Error('Failed to save');
 
-      setCurrentRecipe(updatedRecipe);
-      setChatMessages(prev => [
+      setCurrentRecipe(updated);
+      setChatMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           role: 'assistant',
-          content: `Recipe saved: ${updatedRecipe.title}`,
-          createdAt: new Date()
-        }
+          content: `Recipe saved: ${updated.title}`,
+          createdAt: new Date(),
+        },
       ]);
       await fetchSavedRecipes();
-    } catch (error) {
-      console.error('Save failed:', error);
-      setError('Failed to save recipe. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save recipe');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentRecipe, fetchWithAuth, fetchSavedRecipes]);
+
+  const handleDeleteRecipe = useCallback(async (id: string) => {
+    if (!id) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      await fetchWithAuth(`/recipes/${id}`, { method: 'DELETE' });
+      if (currentRecipe?.id === id) setCurrentRecipe(null);
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Recipe deleted',
+          createdAt: new Date(),
+        },
+      ]);
+      await fetchSavedRecipes();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete recipe');
     } finally {
       setLoading(false);
     }
@@ -167,67 +169,36 @@ export const usePlayground = () => {
 
   const loadRecipe = useCallback(async (id: string) => {
     if (!id) return;
-    
+
     setLoading(true);
     setError(null);
     try {
       const recipe = await fetchWithAuth(`/recipes/${id}`);
-      if (!recipe?.id) {
-        throw new Error('Recipe not found');
-      }
+      if (!recipe?.id) throw new Error('Recipe not found');
       setCurrentRecipe(recipe);
-    } catch (error) {
-      console.error('Load failed:', error);
-      setError('Failed to load recipe. It may have been deleted.');
+      return recipe;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load recipe');
+      throw err;
     } finally {
       setLoading(false);
     }
   }, [fetchWithAuth]);
 
-  const handleDeleteRecipe = useCallback(async (id: string) => {
-    if (!id) return;
-    
-    setLoading(true);
-    setError(null);
-    try {
-      await fetchWithAuth(`/recipes/${id}`, { method: 'DELETE' });
-      if (currentRecipe?.id === id) {
-        setCurrentRecipe(null);
-      }
-      setChatMessages(prev => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: 'Recipe deleted',
-          createdAt: new Date()
-        }
-      ]);
-      await fetchSavedRecipes();
-    } catch (error) {
-      console.error('Delete failed:', error);
-      setError('Failed to delete recipe. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchWithAuth, currentRecipe, fetchSavedRecipes]);
-
   const handleFormChange = useCallback((field: string, value: any) => {
     if (field.startsWith('preferences.')) {
-      const prefField = field.split('.')[1];
-      if (typeof prefField === 'string') {
-        setRecipeForm(prev => ({
-          ...prev,
-          preferences: { 
-            ...prev.preferences, 
-            [prefField]: value 
-          }
-        }));
-      }
+      const prefKey = field.split('.')[1];
+      setRecipeForm((prev) => ({
+        ...prev,
+        preferences: {
+          ...prev.preferences,
+          [prefKey]: value,
+        },
+      }));
     } else {
-      setRecipeForm(prev => ({ 
-        ...prev, 
-        [field]: value 
+      setRecipeForm((prev) => ({
+        ...prev,
+        [field]: value,
       }));
     }
   }, []);
@@ -251,6 +222,6 @@ export const usePlayground = () => {
     handleDeleteRecipe,
     setCurrentRecipe,
     setChatMessages,
-    loadRecipe
+    loadRecipe,
   };
 };

@@ -74,7 +74,7 @@ export function Header() {
             className="flex items-center gap-2 font-semibold hover:opacity-80 transition-opacity"
           >
             <span className="text-lg bg-gradient-to-r from-primary to-black-100 bg-clip-text text-transparent">
-              Al-Edrisy  |||
+              Recipedia  |||
             </span>
           </Link>
 

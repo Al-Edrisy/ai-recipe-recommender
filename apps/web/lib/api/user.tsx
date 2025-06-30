@@ -12,13 +12,22 @@ export const UserService = {
   getCurrentUser: async (): Promise<User> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_URL}/users/me`, { headers });
+      const response = await fetch(`${API_URL}/users/me`, { 
+        headers,
+        credentials: 'include'
+      });
 
-      // Check if response is HTML instead of JSON
+      if (response.redirected) {
+        throw new Error("Authentication required");
+      }
+
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
-        throw new Error(`Unexpected response: ${text.substring(0, 100)}`);
+        if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+          throw new Error("Authentication session expired");
+        }
+        throw new Error(`Unexpected response: ${text}`);
       }
 
       if (!response.ok) {
@@ -29,14 +38,17 @@ export const UserService = {
       return response.json();
     } catch (error) {
       console.error('UserService.getCurrentUser error:', error);
-      throw new Error('Failed to fetch user data. Please try again later.');
+      throw new Error('Authentication session expired. Please sign in again.');
     }
   },
 
   getUsers: async (): Promise<User[]> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_URL}/users`, { headers });
+      const response = await fetch(`${API_URL}/users`, { 
+        headers,
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         throw new Error('Failed to fetch users');
@@ -52,7 +64,10 @@ export const UserService = {
   getUserById: async (id: string): Promise<User> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_URL}/users/${id}`, { headers });
+      const response = await fetch(`${API_URL}/users/${id}`, { 
+        headers,
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         throw new Error('Failed to fetch user');
@@ -72,6 +87,7 @@ export const UserService = {
         method: 'POST',
         headers,
         body: JSON.stringify(data),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -93,6 +109,7 @@ export const UserService = {
         method: 'PUT',
         headers,
         body: JSON.stringify(data),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -113,6 +130,7 @@ export const UserService = {
       const response = await fetch(`${API_URL}/users/${id}`, {
         method: 'DELETE',
         headers,
+        credentials: 'include'
       });
 
       if (!response.ok) {

@@ -1,5 +1,6 @@
 import { auth } from '@/lib/firebase';
 import { User, IdTokenResult } from 'firebase/auth';
+import { logout } from './auth-service';
 
 export const getCurrentUser = (): User | null => {
   return auth.currentUser;
@@ -31,12 +32,26 @@ export const getIdTokenResult = async (): Promise<IdTokenResult | null> => {
   }
 };
 
-export const getAuthHeaders = async (): Promise<Record<string, string>> => {
-  const token = await getIdToken();
-  return {
-    ...(token && { Authorization: `Bearer ${token}` }),
-    'Content-Type': 'application/json',
-  };
+export const getAuthHeaders = async (): Promise<HeadersInit> => {
+  try {
+    // Force token refresh to ensure it's valid
+    await auth.currentUser?.getIdToken(true);
+    const token = await auth.currentUser?.getIdToken(true);
+    
+    if (!token) {
+      logout();
+      throw new Error("Authentication token not found");
+    }
+    
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    };
+  } catch (error) {
+    console.error("Failed to get auth token:", error);
+    logout();
+    throw new Error("Authentication failed. Please sign in again.");
+  }
 };
 
 export const verifyAuth = async (): Promise<{
